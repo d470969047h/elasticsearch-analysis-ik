@@ -1,0 +1,7 @@
+grant {
+  // needed because of the hot reload functionality
+  permission java.net.SocketPermission "*", "connect,resolve";
+
+  // mysql jdbc driver
+  permission java.lang.RuntimePermission "*", "connect,resolve";
+};
