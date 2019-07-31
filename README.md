@@ -9,7 +9,7 @@ IK Analysis for Elasticsearch
 
 - 直接`mvn package`
 
-- 解压 target\releases\elasticsearch-analysis-ik-5.2.0.zip
+- 解压 target/releases/elasticsearch-analysis-ik-6.4.0.zip
 
 - 将 elasticsearch-analysis-ik-6.4.0.jar 放到$ES_HOME$/plugins/analysis-ik/下
 
