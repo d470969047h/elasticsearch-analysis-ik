@@ -42,6 +42,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
+import com.alibaba.druid.pool.DruidDataSourceFactory;
 import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.CloseableHttpResponse;
@@ -54,6 +55,8 @@ import org.elasticsearch.common.logging.ESLoggerFactory;
 import org.elasticsearch.plugin.analysis.ik.AnalysisIkPlugin;
 import org.wltea.analyzer.cfg.Configuration;
 import org.apache.logging.log4j.Logger;
+
+import javax.sql.DataSource;
 
 
 /**
@@ -103,33 +106,26 @@ public class Dictionary {
 
     // jdbc.properties配置信息
 
-    private final static String MYSQL_EXT_DICT_DB_URI = "mysql.jdbc.uri";
-    private final static String MYSQL_EXT_DICT_TABLE = "mysql.ext.dict.table";
-    private final static String MYSQL_EXT_STOP_TABLE = "mysql.ext.stopwords.table";
-    private final static String MYSQL_USER = "mysql.jdbc.user";
-    private final static String MYSQL_PASSWORD = "mysql.jdbc.pwd";
-    private final static String MYSQL_EXT_WORD_FIELD_NAME = "mysql.ext.word.field.name";
-    private final static String ENABLE_MYSQL_DICT = "enable.mysql.dict";
+    private final static String EXT_DICT_TABLE = "ext.dict.table";
+    private final static String EXT_STOP_TABLE = "ext.stopwords.table";
+    private final static String EXT_WORD_FIELD_NAME = "ext.word.field.name";
+    private final static String ENABLE_DICT = "enable.dict";
+    private final static String ENABLE_EXT_DICT = "enable.ext.dict";
+    private final static String ENABLE_STOPWORDS_DICT = "enable.stopwords.dict";
 
-    private final static String MYSQL_DRIVER = "com.mysql.cj.jdbc.Driver";
+    private static DataSource ds;
 
 
     private Path conf_dir;
     private Properties props;
+    private Properties jdbcProps;
 
-
-    static {
-        try {
-            Class.forName(MYSQL_DRIVER);
-        } catch (ClassNotFoundException e) {
-            e.printStackTrace();
-        }
-    }
 
 
     private Dictionary(Configuration cfg) {
         this.configuration = cfg;
         this.props = new Properties();
+        this.jdbcProps = new Properties();
         this.conf_dir = cfg.getEnvironment().configFile().resolve(AnalysisIkPlugin.PLUGIN_NAME);
         Path configFile = conf_dir.resolve(FILE_NAME);
         Path jdbcConfigFile = conf_dir.resolve(JDBC_FILE_NAME);
@@ -168,7 +164,7 @@ public class Dictionary {
         }
         if (jdbcInput != null) {
             try {
-                props.load(jdbcInput);
+                jdbcProps.load(jdbcInput);
             } catch (InvalidPropertiesFormatException e) {
                 logger.error("ik-analyzer", e);
             } catch (IOException e) {
@@ -180,6 +176,13 @@ public class Dictionary {
     public String getProperty(String key) {
         if (props != null) {
             return props.getProperty(key);
+        }
+        return null;
+    }
+
+    private String getJdbcProperty(String key) {
+        if (jdbcProps != null) {
+            return jdbcProps.getProperty(key);
         }
         return null;
     }
@@ -203,6 +206,7 @@ public class Dictionary {
                     singleton.loadPrepDict();
                     singleton.loadStopWordDict();
 
+
                     if (cfg.isEnableRemoteDict()) {
                         // 建立监控线程
                         for (String location : singleton.getRemoteExtDictionarys()) {
@@ -215,13 +219,15 @@ public class Dictionary {
                         }
                     }
 
-                    if (Boolean.valueOf(singleton.props.getProperty(ENABLE_MYSQL_DICT))) {
-                        pool.scheduleAtFixedRate(() -> {
-                            // 加载MySQL自定义词库
-                            singleton.loadMysqlExtDict();
-                            // 加载MySQL停用词
-                            singleton.loadMysqlStopWordDict();
-                        }, 10, 60, TimeUnit.SECONDS);
+                    if (Boolean.valueOf(singleton.jdbcProps.getProperty(ENABLE_DICT))) {
+                        // 加载MySQL自定义词库
+                        if (Boolean.valueOf(singleton.jdbcProps.getProperty(ENABLE_EXT_DICT))){
+                            pool.scheduleAtFixedRate(() -> singleton.loadMysqlExtDict(), 10, 60, TimeUnit.SECONDS);
+                        }
+                        // 加载MySQL停用词
+                        if (Boolean.valueOf(singleton.jdbcProps.getProperty(ENABLE_STOPWORDS_DICT))){
+                            pool.scheduleAtFixedRate(() -> singleton.loadMysqlStopWordDict(), 10, 60, TimeUnit.SECONDS);
+                        }
                     }
 
                     return singleton;
@@ -457,25 +463,6 @@ public class Dictionary {
     }
 
     /**
-     * 加载MySQL自定义词库
-     */
-    private void loadMysqlExtDict() {
-        String extDictTable = props.getProperty(MYSQL_EXT_DICT_TABLE);
-        String field = props.getProperty(MYSQL_EXT_WORD_FIELD_NAME);
-        String sql = String.join(" ", "SELECT", field, "FROM", extDictTable);
-        if (extDictTable != null) {
-            List<String> lists = this.queryForList(sql);
-            logger.info("MySQL扩展词：");
-            for (String theWord : lists) {
-                if (theWord != null && !"".equals(theWord.trim())) {
-                    logger.info(theWord);
-                    _MainDict.fillSegment(theWord.trim().toLowerCase().toCharArray());
-                }
-            }
-        }
-    }
-
-    /**
      * 加载用户配置的扩展词典到主词库表
      */
     private void loadExtDict() {
@@ -609,15 +596,34 @@ public class Dictionary {
     }
 
     /**
-     * 加载MySQL停用词词典
+     * 加载自定义扩展词库
+     */
+    private void loadMysqlExtDict() {
+        String extDictTable = jdbcProps.getProperty(EXT_DICT_TABLE);
+        String field = jdbcProps.getProperty(EXT_WORD_FIELD_NAME);
+        String sql = String.join(" ", "SELECT", field, "FROM", extDictTable);
+        if (extDictTable != null) {
+            List<String> lists = this.queryForList(sql);
+            logger.info("扩展词：");
+            for (String theWord : lists) {
+                if (theWord != null && !"".equals(theWord.trim())) {
+                    logger.info(theWord);
+                    _MainDict.fillSegment(theWord.trim().toLowerCase().toCharArray());
+                }
+            }
+        }
+    }
+
+    /**
+     * 加载停用词词典
      */
     private void loadMysqlStopWordDict() {
-        String extStopDictTable = props.getProperty(MYSQL_EXT_STOP_TABLE);
-        String field = props.getProperty(MYSQL_EXT_WORD_FIELD_NAME);
+        String extStopDictTable = jdbcProps.getProperty(EXT_STOP_TABLE);
+        String field = jdbcProps.getProperty(EXT_WORD_FIELD_NAME);
         String sql = String.join(" ", "SELECT", field, "FROM", extStopDictTable);
         if (extStopDictTable != null) {
             List<String> mysqlExtStopWords = this.queryForList(sql);
-            logger.info("MySQL扩展停用词：");
+            logger.info("扩展停用词：");
             for (String theWord : mysqlExtStopWords) {
                 if (theWord != null && !"".equals(theWord.trim())) {
                     logger.info(theWord);
@@ -670,26 +676,7 @@ public class Dictionary {
         logger.info("重新加载词典完毕...");
     }
 
-    /**
-     * 取得一个数据库连接connection对象
-     */
-    private Connection getConn() {
-        Connection conn = null;
 
-        // 因为IKAnalyzer.cfg.xml这个文件中可能会被注释，所以这里没把配置文件读取写到静态块里
-        String jdbcMysqlUri = props.getProperty(MYSQL_EXT_DICT_DB_URI);
-        String jdbcMysqlUsername = props.getProperty(MYSQL_USER);
-        String jdbcMysqlPasswd = props.getProperty(MYSQL_PASSWORD);
-
-        try {
-            if (jdbcMysqlUri != null && jdbcMysqlUsername != null && jdbcMysqlPasswd != null) {
-                conn = DriverManager.getConnection(jdbcMysqlUri, jdbcMysqlUsername, jdbcMysqlPasswd);
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        return conn;
-    }
 
     /**
      * 查询扩展词/停用词
@@ -700,7 +687,7 @@ public class Dictionary {
         PreparedStatement pstmt = null;
         ResultSet rs = null;
         try {
-            conn = this.getConn();
+            conn = this.getConnection();
             pstmt = conn.prepareStatement(sql);
             rs = pstmt.executeQuery();
             while (rs.next()) {
@@ -709,31 +696,64 @@ public class Dictionary {
         } catch (Exception e) {
             e.printStackTrace();
         } finally {
-            close(rs);
-            close(pstmt);
-            close(conn);
+            close(conn,pstmt,rs);
         }
         return result;
     }
 
-    private static void close(Connection conn) {
+    /**
+     * 获取数据源
+     */
+    private DataSource getDataSource() {
         try {
-            conn.close();
-        } catch (Exception ignored) {
+            ds = DruidDataSourceFactory.createDataSource(jdbcProps);
+        } catch (Exception e) {
+            e.printStackTrace();
         }
+        return ds;
     }
 
-    private static void close(PreparedStatement stmt) {
+    /**
+     * 获取连接对象
+     */
+    private Connection getConnection() {
+        Connection conn = null;
         try {
-            stmt.close();
-        } catch (Exception ignored) {
+            if(null != ds){
+                conn = ds.getConnection();
+            }else {
+                ds = this.getDataSource();
+                conn = ds.getConnection();
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        } catch (Exception e) {
+            e.printStackTrace();
         }
+        return conn;
     }
 
-    private static void close(ResultSet rs) {
-        try {
-            rs.close();
-        } catch (Exception ignored) {
+    private static void close(Connection conn, Statement stmt, ResultSet rs) {
+        if (rs != null) {
+            try {
+                rs.close();
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        }
+        if (stmt != null) {
+            try {
+                stmt.close();
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        }
+        if (conn != null) {
+            try {
+                conn.close();
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
         }
     }
 

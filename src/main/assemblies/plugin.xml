@@ -50,5 +50,14 @@
                 <include>mysql:mysql-connector-java</include>
             </includes>
         </dependencySet>
+
+        <dependencySet>
+            <outputDirectory/>
+            <useProjectArtifact>true</useProjectArtifact>
+            <useTransitiveFiltering>true</useTransitiveFiltering>
+            <includes>
+                <include>com.alibaba:druid</include>
+            </includes>
+        </dependencySet>
     </dependencySets>
 </assembly>
