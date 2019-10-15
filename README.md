@@ -21,6 +21,9 @@ IK Analysis for Elasticsearch
 
 - 将 config/jdbc.properties 修改为你自己的信息并放到$ES_HOME$/config/analysis-ik/下
 
+- 在 config/jvm.options文件添加：
+   > $ES_HOME$/plugins/analysis-ik/plugin-security.policy
+
 - 重启ES
 
 新装插件：
@@ -29,5 +32,8 @@ IK Analysis for Elasticsearch
 
 - 将解压内容放到$ES_HOME$/plugins/analysis-ik目录下
 
-- 将 config/jdbc.properties 修改为你自己的信息并放到$ES_HOME$/config/analysis-ik/下
+- 将 config/jdbc.properties 修改为你自己的信息~~并放到$ES_HOME$/config/analysis-ik/下~~
+
+- 在 config/jvm.options文件添加：
+   > $ES_HOME$/plugins/analysis-ik/plugin-security.policy
 
