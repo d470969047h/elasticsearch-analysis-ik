@@ -219,13 +219,13 @@ public class Dictionary {
                         }
                     }
 
-                    if (Boolean.valueOf(singleton.jdbcProps.getProperty(ENABLE_DICT))) {
+                    if (Boolean.parseBoolean(singleton.jdbcProps.getProperty(ENABLE_DICT))) {
                         // 加载MySQL自定义词库
-                        if (Boolean.valueOf(singleton.jdbcProps.getProperty(ENABLE_EXT_DICT))){
+                        if (Boolean.parseBoolean(singleton.jdbcProps.getProperty(ENABLE_EXT_DICT))){
                             pool.scheduleAtFixedRate(() -> singleton.loadMysqlExtDict(), 10, 60, TimeUnit.SECONDS);
                         }
                         // 加载MySQL停用词
-                        if (Boolean.valueOf(singleton.jdbcProps.getProperty(ENABLE_STOPWORDS_DICT))){
+                        if (Boolean.parseBoolean(singleton.jdbcProps.getProperty(ENABLE_STOPWORDS_DICT))){
                             pool.scheduleAtFixedRate(() -> singleton.loadMysqlStopWordDict(), 10, 60, TimeUnit.SECONDS);
                         }
                     }
