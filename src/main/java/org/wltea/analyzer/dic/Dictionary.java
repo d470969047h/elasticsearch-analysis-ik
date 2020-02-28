@@ -691,7 +691,7 @@ public class Dictionary {
             pstmt = conn.prepareStatement(sql);
             rs = pstmt.executeQuery();
             while (rs.next()) {
-                result.add(rs.getString("word"));
+                result.add(rs.getString(EXT_WORD_FIELD_NAME));
             }
         } catch (Exception e) {
             e.printStackTrace();
